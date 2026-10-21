@@ -302,6 +302,34 @@ def registrar(modelo):
     ultimo_uso.update(modelo=modelo, quando=time.strftime("%H:%M:%S"))
 
 
+def juntar_sistema(corpo: dict, anthropic: bool) -> dict:
+    """Alguns modelos (ex: Qwen) so aceitam UMA mensagem de sistema, no inicio.
+    O Claude Code manda o sistema em varios blocos; aqui vira um texto so."""
+    corpo = dict(corpo)
+    textos = []
+    sistema = corpo.get("system")
+    if isinstance(sistema, str):
+        textos.append(sistema)
+    elif isinstance(sistema, list):
+        textos += [b.get("text", "") for b in sistema if isinstance(b, dict)]
+    # formato OpenAI: mensagens role=system espalhadas pela conversa
+    mensagens = []
+    for m in corpo.get("messages", []):
+        if m.get("role") == "system":
+            c = m.get("content")
+            textos.append(c if isinstance(c, str) else " ".join(b.get("text", "") for b in c if isinstance(b, dict)))
+        else:
+            mensagens.append(m)
+    texto = "\n\n".join(t for t in textos if t)
+    if anthropic:
+        corpo["messages"] = mensagens
+        if texto:
+            corpo["system"] = texto
+    else:
+        corpo["messages"] = ([{"role": "system", "content": texto}] if texto else []) + mensagens
+    return corpo
+
+
 async def chamar_local(caminho: str, request: Request, corpo: dict):
     modelo = modelo_local_ativo()
     if not modelo:
@@ -309,6 +337,7 @@ async def chamar_local(caminho: str, request: Request, corpo: dict):
                              "message": "Nenhum modelo local disponivel. Abra o Ollama e baixe um modelo."}},
                             status_code=503)
     corpo = {**corpo, "model": modelo}
+    corpo = juntar_sistema(corpo, anthropic=caminho == "/v1/messages")
     if "vision" not in await recursos_do_modelo(modelo):
         corpo = tirar_imagens(corpo)
     registrar(modelo)
