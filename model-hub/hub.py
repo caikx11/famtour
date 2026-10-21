@@ -11,7 +11,9 @@ import asyncio
 import json
 import logging
 import subprocess
+import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -57,6 +59,8 @@ config = ler_json(CONFIG_FILE, DEFAULT_CONFIG)
 estado = ler_json(STATE_FILE, {"gguf_importados": {}, "modo": config["modo"], "modelo_local": config["modelo_local"]})
 modelos_locais: list[dict] = []
 pastas_avisadas: set[str] = set()
+trava_scan = threading.Lock()
+falhas: set[str] = set()
 ultimo_uso = {"modelo": None, "quando": None}
 
 app = FastAPI(title="Model Hub")
@@ -77,21 +81,36 @@ def importar_gguf(arquivo: Path) -> bool:
     modelfile.write_text(f'FROM "{arquivo}"\n', encoding="utf-8")
     log.info("Importando %s como '%s'...", arquivo.name, nome)
     try:
-        r = subprocess.run(["ollama", "create", nome, "-f", str(modelfile)], capture_output=True, text=True)
+        r = subprocess.run(["ollama", "create", nome, "-f", str(modelfile)], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
     except FileNotFoundError:
         log.error("Comando 'ollama' nao encontrado. Instale o Ollama.")
         return False
     finally:
         modelfile.unlink(missing_ok=True)
     if r.returncode != 0:
-        log.error("Falha ao importar %s: %s", arquivo.name, r.stderr.strip())
+        # guarda a falha para nao ficar tentando o mesmo arquivo a cada scan
+        falhas.add(str(arquivo))
+        erro = (r.stderr or "").strip().splitlines()
+        log.error("Falha ao importar %s: %s", arquivo.name, erro[-1] if erro else r.returncode)
         return False
     estado["gguf_importados"][str(arquivo)] = nome
     salvar_json(STATE_FILE, estado)
+    log.info("Importado: %s", nome)
     return True
 
 
 def escanear_gguf():
+    # roda numa thread propria; se uma importacao demorada ainda esta em andamento, nao comeca outra
+    if not trava_scan.acquire(blocking=False):
+        return
+    try:
+        _escanear_gguf()
+    finally:
+        trava_scan.release()
+
+
+def _escanear_gguf():
     pastas = config.get("pasta_gguf") or []
     if isinstance(pastas, str):
         pastas = [pastas]
@@ -115,13 +134,15 @@ def escanear_gguf():
         # modelos que nao sao de texto (imagem, embeddings, audio) ou que o usuario nao quer
         if any(p.lower() in caminho for p in config.get("ignorar", [])):
             continue
-        if str(arq) not in estado["gguf_importados"]:
+        # o mesmo arquivo pode existir em mais de uma pasta: importa so uma vez por nome
+        if str(arq) in falhas:
+            continue
+        if str(arq) not in estado["gguf_importados"] and nome_para_gguf(arq) not in estado["gguf_importados"].values():
             importar_gguf(arq)
 
 
 async def atualizar_modelos():
     global modelos_locais
-    await asyncio.to_thread(escanear_gguf)
     try:
         r = await client.get(f"{config['ollama_url']}/api/tags")
         r.raise_for_status()
@@ -142,13 +163,21 @@ async def atualizar_modelos():
 
 async def loop_scan():
     while True:
+        # importacao em segundo plano: a lista de modelos continua atualizando enquanto copia
+        if not trava_scan.locked():
+            asyncio.create_task(asyncio.to_thread(escanear_gguf))
         await atualizar_modelos()
         await asyncio.sleep(config["intervalo_scan_segundos"])
 
 
-@app.on_event("startup")
-async def iniciar():
-    asyncio.create_task(loop_scan())
+@asynccontextmanager
+async def ciclo_de_vida(_app):
+    tarefa = asyncio.create_task(loop_scan())
+    yield
+    tarefa.cancel()
+
+
+app.router.lifespan_context = ciclo_de_vida
 
 
 def modelo_local_ativo() -> str | None:
