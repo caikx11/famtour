@@ -21,3 +21,12 @@ Para o Aider ou um bot, use a base URL `http://localhost:4000/v1` com qualquer A
 | `qwen3-coder:30b` | O melhor para programar. Parte fica na RAM, mas ainda é rápido (MoE). |
 | `gpt-oss:20b` | Cabe inteiro na GPU e é bom com ferramentas. |
 | `qwen3:14b` | Rápido, bom para os agentes do Discord. |
+
+## Skill `/local` (Claude Code)
+O `instalar.bat` instala a skill em `%USERPROFILE%\.claude\skills\local`. Dentro do Claude Code:
+- `/local`: mostra o modo e os modelos.
+- `/local auto`, `/local claude` ou `/local local`: troca o modo.
+- `/local qwen3:14b`: escolhe o modelo local.
+- `/local resuma o arquivo X`: o Claude passa a tarefa para o modelo local e economiza tokens.
+
+O Claude também usa a skill sozinho para tarefas simples, como resumos, boilerplate e mensagens de commit.
