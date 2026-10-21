@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
     "porta": 4000,
     "ollama_url": "http://localhost:11434",
     "anthropic_url": "https://api.anthropic.com",
-    "pasta_gguf": "",
+    "pasta_gguf": [],
     "intervalo_scan_segundos": 10,
     "modo": "auto",
     "modelo_local": "",
@@ -90,10 +90,11 @@ def importar_gguf(arquivo: Path) -> bool:
 
 
 def escanear_gguf():
-    pasta = config.get("pasta_gguf")
-    if not pasta or not Path(pasta).is_dir():
-        return
-    for arq in Path(pasta).rglob("*.gguf"):
+    pastas = config.get("pasta_gguf") or []
+    if isinstance(pastas, str):
+        pastas = [pastas]
+    arquivos = [a for p in pastas if Path(p).is_dir() for a in Path(p).rglob("*.gguf")]
+    for arq in arquivos:
         # pula pedacos de modelos divididos (so importa a parte 1) e projetores de visao
         if "mmproj" in arq.name.lower() or ("-of-" in arq.name and "-00001-of-" not in arq.name):
             continue

@@ -9,7 +9,7 @@ Um endereço só (`http://localhost:4000`) para usar o **Claude** e os **seus mo
 ## Instalação (Windows)
 1. Instale o [Python 3.11+](https://python.org) (marque "Add to PATH") e o [Ollama](https://ollama.com) (versão recente, com suporte à API Anthropic).
 2. Baixe um modelo, por exemplo `ollama pull qwen3-coder:30b` ou `ollama pull gpt-oss:20b`.
-3. Em `model-hub/config.json`, coloque em `pasta_gguf` a pasta onde ficam os seus `.gguf` (ou deixe vazio).
+3. Em `model-hub/config.json`, coloque em `pasta_gguf` as pastas onde ficam os seus `.gguf`, por exemplo `["C:\\Modelos", "D:\\IA"]`. Pode ser uma pasta ou várias. Se não tiver nenhuma, use `[]`.
 4. Rode `model-hub\instalar.bat` uma vez. Para ver o painel, use `model-hub\iniciar.bat` ou abra http://localhost:4000.
 5. Em qualquer terminal novo, digite `claude-hub`. Ele liga o Ollama e o hub sozinho e abre o Claude Code.
 
