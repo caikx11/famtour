@@ -30,3 +30,13 @@ O `instalar.bat` instala a skill em `%USERPROFILE%\.claude\skills\local`. Dentro
 - `/local resuma o arquivo X`: o Claude passa a tarefa para o modelo local e economiza tokens.
 
 O Claude também usa a skill sozinho para tarefas simples, como resumos, boilerplate e mensagens de commit.
+
+## Otimizações automáticas
+O `instalar.bat` configura o Ollama para a RTX 5070 Ti de 16 GB com 64 GB de RAM:
+- **Flash attention**: deixa o modelo mais rápido e gasta menos memória.
+- **Cache KV em 8 bits** (`q8_0`): cabe quase o dobro de contexto na GPU, com perda mínima de qualidade.
+- **Contexto de 32k**: o Claude Code precisa de bastante contexto.
+- **1 modelo e 1 pedido por vez**: a VRAM fica toda para o modelo ativo.
+- **Modelo fica carregado por 30 minutos**: assim ele não recarrega a cada pedido.
+
+Para ver se o modelo está todo na GPU, rode `ollama ps`. A coluna PROCESSOR deve mostrar `100% GPU`. Se aparecer, por exemplo, `30%/70% CPU/GPU`, parte do modelo está na RAM e ele fica mais lento. É normal no `qwen3-coder:30b`.
