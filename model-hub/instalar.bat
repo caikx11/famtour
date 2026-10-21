@@ -1,9 +1,13 @@
 @echo off
 cd /d "%~dp0"
-where python >nul 2>nul || (echo Instale o Python 3.11+ em python.org e marque "Add to PATH". & pause & exit /b)
+rem "py" e o lancador oficial do Python; "python" pode ser so o atalho da Microsoft Store
+set PY=py -3
+py -3 --version >nul 2>nul || set PY=python
+%PY% --version >nul 2>nul || (echo ERRO: Python nao encontrado. Instale em python.org e marque "Add to PATH". & pause & exit /b)
 where ollama >nul 2>nul || echo AVISO: Ollama nao encontrado. Instale em https://ollama.com
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+%PY% -m venv .venv
+if not exist ".venv\Scripts\python.exe" (echo ERRO: nao consegui criar o .venv. Veja a mensagem acima. & pause & exit /b)
+.venv\Scripts\python -m pip install -r requirements.txt || (echo ERRO ao instalar dependencias. Veja a mensagem acima. & pause & exit /b)
 rem Coloca esta pasta no PATH do usuario para o comando "claude-hub" funcionar em qualquer lugar
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); if(($p -split ';') -notcontains '%~dp0'.TrimEnd('\')){[Environment]::SetEnvironmentVariable('Path',($p.TrimEnd(';')+';'+'%~dp0'.TrimEnd('\')),'User')}"
 rem Otimizacoes do Ollama para RTX 5070 Ti 16 GB + 64 GB RAM (valem tambem para o Ollama da bandeja)

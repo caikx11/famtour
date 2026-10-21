@@ -1,4 +1,5 @@
 @echo off
+if not exist "%~dp0.venv\Scripts\python.exe" (echo Rode primeiro o instalar.bat & pause & exit /b)
 rem Comando global: digite "claude-hub" em qualquer terminal.
 rem Liga Ollama + hub se precisar e abre o Claude Code passando pelo hub.
 set "HUB=%~dp0"
