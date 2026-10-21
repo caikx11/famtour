@@ -382,7 +382,10 @@ async def api_estado():
 @app.post("/api/carregar")
 async def api_carregar(request: Request):
     nome = (await request.json())["modelo"]
-    log.info("Carregando %s na memoria...", nome)
+    # carregar tambem escolhe o modelo, senao o proximo pedido traz o antigo de volta
+    estado["modelo_local"] = nome
+    salvar_json(STATE_FILE, estado)
+    log.info("Carregando %s na memoria (agora e o modelo ativo)...", nome)
     # pedido vazio so carrega o modelo; keep_alive -1 = fica carregado ate ser liberado
     await client.post(f"{config['ollama_url']}/api/generate", json={"model": nome, "keep_alive": -1})
     return await api_estado()
