@@ -421,6 +421,17 @@ async def painel():
     return (BASE / "painel.html").read_text(encoding="utf-8")
 
 
+def porta_ocupada(porta: int) -> bool:
+    import socket
+    with socket.socket() as sock:
+        return sock.connect_ex(("127.0.0.1", porta)) == 0
+
+
 if __name__ == "__main__":
+    import sys
     import uvicorn
+    if porta_ocupada(config["porta"]):
+        print(f"O hub ja esta rodando em http://localhost:{config['porta']} (ou outro programa usa essa porta).")
+        print("Feche a outra janela do hub antes de abrir de novo.")
+        sys.exit(1)
     uvicorn.run(app, host="127.0.0.1", port=config["porta"], log_level="warning")
