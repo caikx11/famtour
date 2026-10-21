@@ -356,10 +356,46 @@ async def listar_openai():
 
 # ---------------------------------------------------------------- painel
 
+async def modelos_carregados() -> dict:
+    """Modelos que estao na memoria agora (ollama ps): nome -> GB na GPU e % na GPU."""
+    try:
+        r = await client.get(f"{config['ollama_url']}/api/ps")
+        saida = {}
+        for m in r.json().get("models", []):
+            total, vram = m.get("size", 0), m.get("size_vram", 0)
+            saida[m["name"]] = {"vram_gb": round(vram / 1e9, 1),
+                                "gpu_pct": round(100 * vram / total) if total else 0}
+        return saida
+    except Exception:
+        return {}
+
+
 @app.get("/api/estado")
 async def api_estado():
+    carregados = await modelos_carregados()
+    modelos = [{**m, "carregado": carregados.get(m["nome"])} for m in modelos_locais]
     return {"modo": estado.get("modo"), "modelo_local": modelo_local_ativo(),
-            "modelos": modelos_locais, "ultimo_uso": ultimo_uso}
+            "modelos": modelos, "ultimo_uso": ultimo_uso,
+            "vram_total_gb": round(sum(c["vram_gb"] for c in carregados.values()), 1)}
+
+
+@app.post("/api/carregar")
+async def api_carregar(request: Request):
+    nome = (await request.json())["modelo"]
+    log.info("Carregando %s na memoria...", nome)
+    # pedido vazio so carrega o modelo; keep_alive -1 = fica carregado ate ser liberado
+    await client.post(f"{config['ollama_url']}/api/generate", json={"model": nome, "keep_alive": -1})
+    return await api_estado()
+
+
+@app.post("/api/liberar")
+async def api_liberar(request: Request):
+    nome = (await request.json()).get("modelo")
+    nomes = [nome] if nome else list(await modelos_carregados())
+    for n in nomes:
+        log.info("Liberando %s da memoria", n)
+        await client.post(f"{config['ollama_url']}/api/generate", json={"model": n, "keep_alive": 0})
+    return await api_estado()
 
 
 @app.post("/api/selecionar")

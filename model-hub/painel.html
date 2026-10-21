@@ -15,7 +15,8 @@
   button.ativo { background:var(--acc); color:#08111f; border-color:var(--acc); font-weight:600; }
   .modelo { display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:8px; cursor:pointer; }
   .modelo:hover { background:#232a33; } .modelo.ativo { outline:2px solid var(--ok); }
-  .info { color:var(--sub); font-size:13px; } .vazio { color:var(--sub); }
+  .info { color:var(--sub); font-size:13px; } .carregado { color:var(--ok); font-size:13px; }
+  button:disabled { opacity:.6; cursor:wait; } .vazio { color:var(--sub); }
 </style>
 </head>
 <body>
@@ -35,9 +36,11 @@
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <b>Modelos locais</b><button id="scan">Procurar agora</button>
+      <b>Modelos locais</b>
+      <span><button id="liberar-tudo">Liberar tudo</button> <button id="scan">Procurar agora</button></span>
     </div>
     <p class="info">Clique para escolher qual modelo local será usado. Modelos novos aparecem sozinhos.<br>Para o Claude Code, use um modelo com 🔧 ferramentas.</p>
+    <p class="info" id="vram"></p>
     <div id="lista"></div>
   </div>
 
@@ -57,13 +60,25 @@ function desenhar(e) {
     d.className = "modelo" + (m.nome === e.modelo_local ? " ativo" : "");
     const r = m.recursos || [];
     const tags = (r.includes("tools") ? "🔧 ferramentas " : "") + (r.includes("vision") ? "👁 imagens " : "");
-    d.innerHTML = `<span>${m.nome}</span><span class="info">${tags}${m.detalhes} · ${m.tamanho_gb} GB</span>`;
+    const c = m.carregado;
+    const mem = c ? `<span class="carregado">● ${c.vram_gb} GB na GPU (${c.gpu_pct}%)</span> ` : "";
+    d.innerHTML = `<span>${m.nome}<br><span class="info">${tags}${m.detalhes} · ${m.tamanho_gb} GB</span></span>
+      <span>${mem}<button class="mem">${c ? "Liberar" : "Carregar"}</button></span>`;
     d.onclick = () => api("/api/selecionar", {modelo_local: m.nome}).then(desenhar);
+    d.querySelector(".mem").onclick = ev => {
+      ev.stopPropagation();
+      ev.target.textContent = c ? "Liberando..." : "Carregando...";
+      ev.target.disabled = true;
+      api(c ? "/api/liberar" : "/api/carregar", {modelo: m.nome}).then(desenhar);
+    };
     lista.appendChild(d);
   }
+  document.getElementById("vram").textContent = e.vram_total_gb
+    ? `Memória da placa em uso pelos modelos: ${e.vram_total_gb} GB de 16 GB` : "Nenhum modelo carregado na placa.";
   if (e.ultimo_uso.modelo) document.getElementById("uso").textContent = `Último pedido: ${e.ultimo_uso.modelo} às ${e.ultimo_uso.quando}`;
 }
 document.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => api("/api/selecionar", {modo: b.dataset.modo}).then(desenhar));
+document.getElementById("liberar-tudo").onclick = () => api("/api/liberar", {}).then(desenhar);
 document.getElementById("scan").onclick = () => api("/api/escanear", {}).then(desenhar);
 const atualizar = () => api("/api/estado").then(desenhar).catch(() => {});
 atualizar(); setInterval(atualizar, 5000);
