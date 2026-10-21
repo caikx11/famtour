@@ -55,6 +55,7 @@ def salvar_json(path, dados):
 config = ler_json(CONFIG_FILE, DEFAULT_CONFIG)
 estado = ler_json(STATE_FILE, {"gguf_importados": {}, "modo": config["modo"], "modelo_local": config["modelo_local"]})
 modelos_locais: list[dict] = []
+pastas_avisadas: set[str] = set()
 ultimo_uso = {"modelo": None, "quando": None}
 
 app = FastAPI(title="Model Hub")
@@ -93,7 +94,18 @@ def escanear_gguf():
     pastas = config.get("pasta_gguf") or []
     if isinstance(pastas, str):
         pastas = [pastas]
-    arquivos = [a for p in pastas if Path(p).is_dir() for a in Path(p).rglob("*.gguf")]
+    arquivos = []
+    for p in pastas:
+        if not Path(p).is_dir():
+            if p not in pastas_avisadas:
+                log.warning("Pasta de modelos nao encontrada: %s (confira o config.json)", p)
+                pastas_avisadas.add(p)
+            continue
+        achados = list(Path(p).rglob("*.gguf"))
+        if p not in pastas_avisadas:
+            log.info("%s: %d arquivo(s) .gguf encontrado(s)", p, len(achados))
+            pastas_avisadas.add(p)
+        arquivos += achados
     for arq in arquivos:
         # pula pedacos de modelos divididos (so importa a parte 1) e projetores de visao
         if "mmproj" in arq.name.lower() or ("-of-" in arq.name and "-00001-of-" not in arq.name):
