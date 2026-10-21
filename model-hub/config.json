@@ -1,0 +1,9 @@
+{
+  "porta": 4000,
+  "ollama_url": "http://localhost:11434",
+  "anthropic_url": "https://api.anthropic.com",
+  "pasta_gguf": "C:\\Modelos",
+  "intervalo_scan_segundos": 10,
+  "modo": "auto",
+  "modelo_local": ""
+}
