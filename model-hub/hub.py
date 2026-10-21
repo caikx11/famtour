@@ -75,20 +75,44 @@ def nome_para_gguf(arquivo: Path) -> str:
     return "gguf-" + "".join(c for c in nome if c.isalnum() or c in "-.")
 
 
-def importar_gguf(arquivo: Path) -> bool:
-    """Registra um .gguf no Ollama (ollama create) para ele virar um modelo normal."""
-    nome = nome_para_gguf(arquivo)
+def achar_mmproj(arquivo: Path) -> Path | None:
+    """Arquivo de visao (mmproj) que fica na mesma pasta do modelo, se existir. Prefere F16."""
+    candidatos = sorted(arquivo.parent.glob("*mmproj*.gguf"))
+    for c in candidatos:
+        if "f16" in c.name.lower() and "bf16" not in c.name.lower():
+            return c
+    return candidatos[0] if candidatos else None
+
+
+def ollama_create(nome: str, linhas: list[str]):
     modelfile = BASE / f".Modelfile-{nome}"
-    modelfile.write_text(f'FROM "{arquivo}"\n', encoding="utf-8")
-    log.info("Importando %s como '%s'...", arquivo.name, nome)
+    modelfile.write_text("\n".join(linhas) + "\n", encoding="utf-8")
     try:
-        r = subprocess.run(["ollama", "create", nome, "-f", str(modelfile)], capture_output=True,
-                           text=True, encoding="utf-8", errors="replace")
+        return subprocess.run(["ollama", "create", nome, "-f", str(modelfile)], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+    finally:
+        modelfile.unlink(missing_ok=True)
+
+
+def importar_gguf(arquivo: Path) -> bool:
+    """Registra um .gguf no Ollama (ollama create) para ele virar um modelo normal.
+    Se houver um mmproj na pasta, tenta importar junto (visao); se falhar, importa so o texto."""
+    nome = nome_para_gguf(arquivo)
+    mmproj = achar_mmproj(arquivo)
+    log.info("Importando %s como '%s'%s...", arquivo.name, nome, " (com visao)" if mmproj else "")
+    try:
+        r = None
+        if mmproj:
+            r = ollama_create(nome, [f'FROM "{arquivo}"', f'FROM "{mmproj}"'])
+            if r.returncode == 0:
+                estado.setdefault("com_visao", []).append(nome)
+            else:
+                log.warning("Visao nao suportada para %s, importando so o texto", nome)
+        if r is None or r.returncode != 0:
+            r = ollama_create(nome, [f'FROM "{arquivo}"'])
     except FileNotFoundError:
         log.error("Comando 'ollama' nao encontrado. Instale o Ollama.")
         return False
-    finally:
-        modelfile.unlink(missing_ok=True)
     if r.returncode != 0:
         # guarda a falha para nao ficar tentando o mesmo arquivo a cada scan
         falhas.add(str(arquivo))
@@ -96,7 +120,10 @@ def importar_gguf(arquivo: Path) -> bool:
         log.error("Falha ao importar %s: %s", arquivo.name, erro[-1] if erro else r.returncode)
         return False
     estado["gguf_importados"][str(arquivo)] = nome
+    if mmproj:
+        estado.setdefault("visao_tentada", []).append(nome)
     salvar_json(STATE_FILE, estado)
+    cache_recursos.pop(nome + ":latest", None)
     log.info("Importado: %s", nome)
     return True
 
@@ -138,7 +165,12 @@ def _escanear_gguf():
         # o mesmo arquivo pode existir em mais de uma pasta: importa so uma vez por nome
         if str(arq) in falhas:
             continue
-        if str(arq) not in estado["gguf_importados"] and nome_para_gguf(arq) not in estado["gguf_importados"].values():
+        nome = nome_para_gguf(arq)
+        if str(arq) not in estado["gguf_importados"] and nome not in estado["gguf_importados"].values():
+            importar_gguf(arq)
+        elif (str(arq) in estado["gguf_importados"] and nome not in estado.get("visao_tentada", [])
+              and achar_mmproj(arq)):
+            # importado antes sem visao: refaz com o mmproj (rapido, o Ollama reaproveita o arquivo ja copiado)
             importar_gguf(arq)
 
 
