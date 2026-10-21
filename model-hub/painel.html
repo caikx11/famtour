@@ -37,7 +37,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center">
       <b>Modelos locais</b><button id="scan">Procurar agora</button>
     </div>
-    <p class="info">Clique para escolher qual modelo local será usado. Modelos novos aparecem sozinhos.</p>
+    <p class="info">Clique para escolher qual modelo local será usado. Modelos novos aparecem sozinhos.<br>Para o Claude Code, use um modelo com 🔧 ferramentas.</p>
     <div id="lista"></div>
   </div>
 
@@ -55,7 +55,9 @@ function desenhar(e) {
   for (const m of e.modelos) {
     const d = document.createElement("div");
     d.className = "modelo" + (m.nome === e.modelo_local ? " ativo" : "");
-    d.innerHTML = `<span>${m.nome}</span><span class="info">${m.detalhes} · ${m.tamanho_gb} GB</span>`;
+    const r = m.recursos || [];
+    const tags = (r.includes("tools") ? "🔧 ferramentas " : "") + (r.includes("vision") ? "👁 imagens " : "");
+    d.innerHTML = `<span>${m.nome}</span><span class="info">${tags}${m.detalhes} · ${m.tamanho_gb} GB</span>`;
     d.onclick = () => api("/api/selecionar", {modelo_local: m.nome}).then(desenhar);
     lista.appendChild(d);
   }

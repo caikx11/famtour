@@ -61,6 +61,7 @@ modelos_locais: list[dict] = []
 pastas_avisadas: set[str] = set()
 trava_scan = threading.Lock()
 falhas: set[str] = set()
+cache_recursos: dict[str, list[str]] = {}
 ultimo_uso = {"modelo": None, "quando": None}
 
 app = FastAPI(title="Model Hub")
@@ -141,6 +142,37 @@ def _escanear_gguf():
             importar_gguf(arq)
 
 
+async def recursos_do_modelo(nome: str) -> list[str]:
+    """O que o modelo sabe fazer segundo o Ollama: 'tools' (ferramentas), 'vision' (imagens)..."""
+    if nome not in cache_recursos:
+        try:
+            r = await client.post(f"{config['ollama_url']}/api/show", json={"model": nome})
+            cache_recursos[nome] = r.json().get("capabilities", [])
+        except Exception:
+            return []
+    return cache_recursos[nome]
+
+
+def tirar_imagens(corpo: dict) -> dict:
+    """Troca imagens por um aviso em texto, para modelos que nao enxergam."""
+    aviso = {"type": "text", "text": "[imagem removida: o modelo local atual nao enxerga imagens]"}
+
+    def limpar(conteudo):
+        if not isinstance(conteudo, list):
+            return conteudo
+        saida = []
+        for bloco in conteudo:
+            if isinstance(bloco, dict) and bloco.get("type") in ("image", "image_url"):
+                saida.append(aviso)
+            elif isinstance(bloco, dict) and bloco.get("type") == "tool_result":
+                saida.append({**bloco, "content": limpar(bloco.get("content"))})
+            else:
+                saida.append(bloco)
+        return saida
+
+    return {**corpo, "messages": [{**m, "content": limpar(m.get("content"))} for m in corpo.get("messages", [])]}
+
+
 async def atualizar_modelos():
     global modelos_locais
     try:
@@ -154,6 +186,8 @@ async def atualizar_modelos():
     except Exception as e:
         log.warning("Ollama indisponivel (%s)", e.__class__.__name__)
         return
+    for m in novos:
+        m["recursos"] = await recursos_do_modelo(m["nome"])
     antigos = {m["nome"] for m in modelos_locais}
     for m in novos:
         if m["nome"] not in antigos:
@@ -243,6 +277,8 @@ async def chamar_local(caminho: str, request: Request, corpo: dict):
                              "message": "Nenhum modelo local disponivel. Abra o Ollama e baixe um modelo."}},
                             status_code=503)
     corpo = {**corpo, "model": modelo}
+    if "vision" not in await recursos_do_modelo(modelo):
+        corpo = tirar_imagens(corpo)
     registrar(modelo)
     resp, dados = await encaminhar(f"{config['ollama_url']}{caminho}", headers_para("local", request), corpo)
     return responder(resp, dados)
