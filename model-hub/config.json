@@ -6,6 +6,17 @@
     "D:\\huggingface\\hub"
   ],
   "intervalo_scan_segundos": 10,
+  "modo": "auto",
+  "modelo_local": "",
+  "ferramentas_locais": [
+    "Bash",
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep",
+    "TodoWrite"
+  ],
   "ignorar": [
     "image",
     "vae",
@@ -14,7 +25,5 @@
     "bge-",
     "whisper",
     "tts"
-  ],
-  "modo": "auto",
-  "modelo_local": ""
+  ]
 }

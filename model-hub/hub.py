@@ -29,6 +29,8 @@ DEFAULT_CONFIG = {
     "ollama_url": "http://localhost:11434",
     "anthropic_url": "https://api.anthropic.com",
     "pasta_gguf": [],
+    # ferramentas do Claude Code mantidas no modo local; o resto (MCP, plugins) e cortado para caber no contexto
+    "ferramentas_locais": ["Bash", "Read", "Edit", "Write", "Glob", "Grep", "TodoWrite"],
     "ignorar": ["image", "vae", "diffusion", "embed", "bge-", "whisper", "tts"],
     "intervalo_scan_segundos": 10,
     "modo": "auto",
@@ -330,6 +332,27 @@ def juntar_sistema(corpo: dict, anthropic: bool) -> dict:
     return corpo
 
 
+def cortar_ferramentas(corpo: dict) -> dict:
+    """Plugins e servidores MCP somam dezenas de milhares de tokens em descricoes de ferramentas.
+    Para o modelo local (contexto pequeno) mantem so as essenciais da lista do config."""
+    permitidas = config.get("ferramentas_locais")
+    if not permitidas or not corpo.get("tools"):
+        return corpo
+
+    def nome(t):
+        return t.get("name") or t.get("function", {}).get("name", "")
+
+    tools = [t for t in corpo["tools"] if nome(t) in permitidas]
+    cortadas = len(corpo["tools"]) - len(tools)
+    if cortadas:
+        log.info("Modo local: %d ferramentas extras cortadas, %d mantidas", cortadas, len(tools))
+    corpo = {**corpo, "tools": tools}
+    if not tools:
+        corpo.pop("tools")
+        corpo.pop("tool_choice", None)
+    return corpo
+
+
 async def chamar_local(caminho: str, request: Request, corpo: dict):
     modelo = modelo_local_ativo()
     if not modelo:
@@ -338,6 +361,7 @@ async def chamar_local(caminho: str, request: Request, corpo: dict):
                             status_code=503)
     corpo = {**corpo, "model": modelo}
     corpo = juntar_sistema(corpo, anthropic=caminho == "/v1/messages")
+    corpo = cortar_ferramentas(corpo)
     if "vision" not in await recursos_do_modelo(modelo):
         corpo = tirar_imagens(corpo)
     registrar(modelo)

@@ -41,3 +41,6 @@ O `instalar.bat` configura o Ollama para a RTX 5070 Ti de 16 GB com 64 GB de RAM
 - **Modelo fica carregado por 30 minutos**: assim ele não recarrega a cada pedido.
 
 Para ver se o modelo está todo na GPU, rode `ollama ps`. A coluna PROCESSOR deve mostrar `100% GPU`. Se aparecer, por exemplo, `30%/70% CPU/GPU`, parte do modelo está na RAM e ele fica mais lento. É normal no `qwen3-coder:30b`.
+
+## Contexto do modelo local
+O Claude Code manda junto com cada pedido as instruções e as ferramentas de todos os plugins e servidores MCP. Isso pode passar de 100 mil tokens, mas o modelo local trabalha com 32 mil. Por isso, no modo local, o hub mantém só as ferramentas listadas em `ferramentas_locais` no `config.json`. Use `/context` no Claude Code para ver o que está ocupando espaço.
