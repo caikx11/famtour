@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "ollama_url": "http://localhost:11434",
     "anthropic_url": "https://api.anthropic.com",
     "pasta_gguf": [],
+    "ignorar": ["image", "vae", "diffusion", "embed", "bge-", "whisper", "tts"],
     "intervalo_scan_segundos": 10,
     "modo": "auto",
     "modelo_local": "",
@@ -108,7 +109,11 @@ def escanear_gguf():
         arquivos += achados
     for arq in arquivos:
         # pula pedacos de modelos divididos (so importa a parte 1) e projetores de visao
+        caminho = str(arq).lower()
         if "mmproj" in arq.name.lower() or ("-of-" in arq.name and "-00001-of-" not in arq.name):
+            continue
+        # modelos que nao sao de texto (imagem, embeddings, audio) ou que o usuario nao quer
+        if any(p.lower() in caminho for p in config.get("ignorar", [])):
             continue
         if str(arq) not in estado["gguf_importados"]:
             importar_gguf(arq)

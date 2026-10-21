@@ -2,8 +2,19 @@
   "porta": 4000,
   "ollama_url": "http://localhost:11434",
   "anthropic_url": "https://api.anthropic.com",
-  "pasta_gguf": ["C:\\Modelos", "D:\\IA\\Modelos"],
+  "pasta_gguf": [
+    "D:\\huggingface\\hub"
+  ],
   "intervalo_scan_segundos": 10,
+  "ignorar": [
+    "image",
+    "vae",
+    "diffusion",
+    "embed",
+    "bge-",
+    "whisper",
+    "tts"
+  ],
   "modo": "auto",
   "modelo_local": ""
 }
