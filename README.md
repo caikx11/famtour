@@ -44,3 +44,27 @@ Para ver se o modelo está todo na GPU, rode `ollama ps`. A coluna PROCESSOR dev
 
 ## Contexto do modelo local
 O Claude Code manda junto com cada pedido as instruções e as ferramentas de todos os plugins e servidores MCP. Isso pode passar de 100 mil tokens, mas o modelo local trabalha com 32 mil. Por isso, no modo local, o hub mantém só as ferramentas listadas em `ferramentas_locais` no `config.json`. Use `/context` no Claude Code para ver o que está ocupando espaço.
+
+## Imagens (ComfyUI)
+O hub separa sozinho os modelos de **texto** (vão para o Ollama) dos de **imagem** (vão para o ComfyUI). Ele lê o tipo no cabeçalho do `.gguf` e, nos arquivos `.safetensors`, se guia pelo nome.
+
+**Instalação (uma vez):**
+1. Baixe o **ComfyUI Portable para NVIDIA** em https://github.com/comfyanonymous/ComfyUI/releases e extraia, por exemplo em `C:\ComfyUI_windows_portable`.
+2. Instale o nó **ComfyUI-GGUF**, necessário para modelos `.gguf`. Na pasta `ComfyUI_windows_portable`, rode:
+   ```
+   git clone https://github.com/city96/ComfyUI-GGUF ComfyUI\custom_nodes\ComfyUI-GGUF
+   python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI-GGUF\requirements.txt
+   ```
+3. O Qwen-Image também precisa de um **text encoder** e de um **VAE** no formato do ComfyUI. Baixe os dois para uma das pastas de modelos, em https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/tree/main/split_files:
+   - `text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors`
+   - `vae/qwen_image_vae.safetensors`
+4. No `config.json`, em `"imagem"`, coloque em `"comfyui_pasta"` a pasta do ComfyUI.
+
+**Como usar:**
+- **No painel:** use a seção "Imagens".
+- **No Claude Code:** `/imagem um gato astronauta, estilo aquarela`.
+- **No terminal:** `python hubctl.py imagem "a cat astronaut" --saida gato.png`.
+
+O hub liga o ComfyUI sozinho, tira o modelo de texto da placa antes de gerar e devolve a placa no próximo pedido de texto. As imagens ficam em `model-hub\imagens`.
+
+**Outros modelos de imagem (Flux, SDXL...):** monte o workflow no ComfyUI, exporte com **Save (API)** e salve como `model-hub\workflow_imagem.json`. Nos campos que variam, escreva `{{prompt}}`, `{{negativo}}`, `{{modelo}}`, `{{largura}}`, `{{altura}}`, `{{seed}}`, `{{passos}}` e `{{cfg}}`. O hub troca esses marcadores a cada pedido.

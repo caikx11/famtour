@@ -16,7 +16,12 @@
   .modelo { display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:8px; cursor:pointer; }
   .modelo:hover { background:#232a33; } .modelo.ativo { outline:2px solid var(--ok); }
   .info { color:var(--sub); font-size:13px; } .carregado { color:var(--ok); font-size:13px; }
-  button:disabled { opacity:.6; cursor:wait; } .vazio { color:var(--sub); }
+  button:disabled { opacity:.6; cursor:wait; }
+  select, textarea { width:100%; box-sizing:border-box; background:#262d36; color:var(--txt); border:1px solid #333b46;
+    border-radius:8px; padding:8px; font:inherit; font-size:14px; margin-bottom:8px; }
+  .modos select { width:auto; margin:0; }
+  #img-galeria { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin-top:8px; }
+  #img-galeria img { width:100%; border-radius:8px; display:block; } .vazio { color:var(--sub); }
 </style>
 </head>
 <body>
@@ -42,6 +47,25 @@
     <p class="info">Clique no nome para escolher o modelo local (verde = ativo). "Carregar" também escolhe. Modelos novos aparecem sozinhos.<br>Para o Claude Code, use um modelo com 🔧 ferramentas.</p>
     <p class="info" id="vram"></p>
     <div id="lista"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>Imagens</b><span class="info" id="comfy"></span>
+    </div>
+    <p class="info">Gera imagens pelo ComfyUI. O modelo de texto é tirado da placa antes e volta sozinho no próximo pedido.</p>
+    <select id="img-modelo"></select>
+    <textarea id="img-prompt" rows="3" placeholder="Descreva a imagem (em inglês funciona melhor)"></textarea>
+    <div class="modos">
+      <select id="img-tam">
+        <option value="1024x1024">Quadrada 1024</option>
+        <option value="1344x768">Paisagem 16:9</option>
+        <option value="768x1344">Retrato 9:16</option>
+      </select>
+      <button id="img-gerar">Gerar</button>
+    </div>
+    <p class="info" id="img-status"></p>
+    <div id="img-galeria"></div>
   </div>
 
   <div class="card info" id="uso">Nenhum pedido ainda.</div>
@@ -80,7 +104,32 @@ function desenhar(e) {
 document.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => api("/api/selecionar", {modo: b.dataset.modo}).then(desenhar));
 document.getElementById("liberar-tudo").onclick = () => api("/api/liberar", {}).then(desenhar);
 document.getElementById("scan").onclick = () => api("/api/escanear", {}).then(desenhar);
-const atualizar = () => api("/api/estado").then(desenhar).catch(() => {});
+function desenharImagens(e) {
+  document.getElementById("comfy").textContent = e.online ? "● ComfyUI ligado"
+    : e.configurado ? "ComfyUI desligado (liga sozinho ao gerar)" : "ComfyUI não configurado no config.json";
+  const sel = document.getElementById("img-modelo"), atual = sel.value;
+  sel.innerHTML = e.modelos.length ? "" : "<option value=''>Nenhum modelo de imagem encontrado</option>";
+  for (const m of e.modelos) sel.add(new Option(`${m.nome} · ${m.tamanho_gb} GB`, m.nome));
+  if (atual) sel.value = atual;
+  document.getElementById("img-galeria").innerHTML =
+    e.recentes.map(u => `<a href="${u}" target="_blank"><img src="${u}" loading="lazy"></a>`).join("");
+}
+document.getElementById("img-gerar").onclick = async ev => {
+  const prompt = document.getElementById("img-prompt").value.trim();
+  if (!prompt) return;
+  const [largura, altura] = document.getElementById("img-tam").value.split("x").map(Number);
+  const status = document.getElementById("img-status");
+  ev.target.disabled = true;
+  status.textContent = "Gerando... (a primeira vez demora mais: o ComfyUI precisa ligar e carregar o modelo)";
+  const r = await api("/api/imagem", {prompt, largura, altura, modelo: document.getElementById("img-modelo").value});
+  status.textContent = r.erro ? "Erro: " + r.erro : "Pronta: " + r.arquivo;
+  ev.target.disabled = false;
+  api("/api/imagens").then(desenharImagens);
+};
+const atualizar = () => {
+  api("/api/estado").then(desenhar).catch(() => {});
+  api("/api/imagens").then(desenharImagens).catch(() => {});
+};
 atualizar(); setInterval(atualizar, 5000);
 </script>
 </body>

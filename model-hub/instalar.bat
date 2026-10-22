@@ -21,8 +21,9 @@ rem Variavel usada pela skill /local
 setx MODEL_HUB "%~dp0." >nul
 rem Instala a skill /local no Claude Code
 xcopy /e /i /y "skill\local" "%USERPROFILE%\.claude\skills\local" >nul
+xcopy /e /i /y "skill\imagem" "%USERPROFILE%\.claude\skills\imagem" >nul
 echo.
 echo Se o Ollama ja estava aberto, feche ele na bandeja para aplicar as otimizacoes.
 echo Pronto! Feche e abra o terminal e digite:  claude-hub
-echo Dentro do Claude Code use:  /local
+echo Dentro do Claude Code use:  /local  e  /imagem
 pause

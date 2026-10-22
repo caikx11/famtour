@@ -18,7 +18,9 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+
+import imagem
 
 BASE = Path(__file__).parent
 CONFIG_FILE = BASE / "config.json"
@@ -31,7 +33,9 @@ DEFAULT_CONFIG = {
     "pasta_gguf": [],
     # ferramentas do Claude Code mantidas no modo local; o resto (MCP, plugins) e cortado para caber no contexto
     "ferramentas_locais": ["Bash", "Read", "Edit", "Write", "Glob", "Grep", "TodoWrite"],
-    "ignorar": ["image", "vae", "diffusion", "embed", "bge-", "whisper", "tts"],
+    "ignorar": ["vae", "embed", "bge-", "whisper", "tts"],
+    # geracao de imagens pelo ComfyUI (veja imagem.py para todas as opcoes)
+    "imagem": {"comfyui_pasta": ""},
     "intervalo_scan_segundos": 10,
     "modo": "auto",
     "modelo_local": "",
@@ -164,6 +168,8 @@ def _escanear_gguf():
         # modelos que nao sao de texto (imagem, embeddings, audio) ou que o usuario nao quer
         if any(p.lower() in caminho for p in config.get("ignorar", [])):
             continue
+        if imagem.e_modelo_de_imagem(arq) or imagem.e_componente(arq):
+            continue
         # o mesmo arquivo pode existir em mais de uma pasta: importa so uma vez por nome
         if str(arq) in falhas:
             continue
@@ -174,6 +180,7 @@ def _escanear_gguf():
               and achar_mmproj(arq)):
             # importado antes sem visao: refaz com o mmproj (rapido, o Ollama reaproveita o arquivo ja copiado)
             importar_gguf(arq)
+    gerador.atualizar()
 
 
 async def recursos_do_modelo(nome: str) -> list[str]:
@@ -360,6 +367,7 @@ async def chamar_local(caminho: str, request: Request, corpo: dict):
                              "message": "Nenhum modelo local disponivel. Abra o Ollama e baixe um modelo."}},
                             status_code=503)
     corpo = {**corpo, "model": modelo}
+    await gerador.liberar()  # se o ComfyUI estava com a GPU, devolve para o modelo de texto
     corpo = juntar_sistema(corpo, anthropic=caminho == "/v1/messages")
     corpo = cortar_ferramentas(corpo)
     if "vision" not in await recursos_do_modelo(modelo):
@@ -444,14 +452,49 @@ async def api_carregar(request: Request):
     return await api_estado()
 
 
-@app.post("/api/liberar")
-async def api_liberar(request: Request):
-    nome = (await request.json()).get("modelo")
+async def liberar_texto(nome: str | None = None):
     nomes = [nome] if nome else list(await modelos_carregados())
     for n in nomes:
         log.info("Liberando %s da memoria", n)
         await client.post(f"{config['ollama_url']}/api/generate", json={"model": n, "keep_alive": 0})
+
+
+@app.post("/api/liberar")
+async def api_liberar(request: Request):
+    nome = (await request.json()).get("modelo")
+    await liberar_texto(nome)
+    if not nome:
+        await gerador.liberar()
     return await api_estado()
+
+
+gerador = imagem.Gerador(config, client, liberar_texto)
+
+
+@app.post("/api/imagem")
+async def api_imagem(request: Request):
+    dados = await request.json()
+    try:
+        arq = await gerador.gerar(dados["prompt"], dados.get("modelo"), dados.get("negativo", ""),
+                                  dados.get("largura"), dados.get("altura"))
+    except (RuntimeError, httpx.HTTPError) as e:
+        log.error("Imagem: %s", e)
+        return JSONResponse({"erro": str(e)}, status_code=500)
+    return {"arquivo": str(arq), "url": f"/imagens/{arq.name}"}
+
+
+@app.get("/api/imagens")
+async def api_imagens():
+    recentes = sorted(imagem.PASTA_SAIDA.glob("*.png"), reverse=True)[:12] if imagem.PASTA_SAIDA.exists() else []
+    return {"online": await gerador.online(), "configurado": bool(gerador.pasta_comfy()),
+            "modelos": [{k: m[k] for k in ("nome", "tamanho_gb")} for m in gerador.modelos],
+            "recentes": [f"/imagens/{a.name}" for a in recentes]}
+
+
+@app.get("/imagens/{nome}")
+async def ver_imagem(nome: str):
+    arq = imagem.PASTA_SAIDA / Path(nome).name
+    return FileResponse(arq) if arq.exists() else JSONResponse({"erro": "nao encontrada"}, status_code=404)
 
 
 @app.post("/api/selecionar")

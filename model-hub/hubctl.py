@@ -3,6 +3,8 @@
   python hubctl.py status                 -> modo, modelo ativo e modelos disponiveis
   python hubctl.py modo auto|claude|local -> troca o modo
   python hubctl.py modelo NOME            -> escolhe o modelo local
+  python hubctl.py imagem "descricao" [--saida arquivo.png] [--tamanho 1344x768]
+                                         -> gera uma imagem pelo ComfyUI
   python hubctl.py perguntar "texto"      -> manda uma tarefa para o modelo local
       (o texto tambem pode vir pela entrada padrao; --arquivo CAMINHO anexa arquivos)
 """
@@ -48,6 +50,25 @@ def perguntar(args):
     print(r["choices"][0]["message"]["content"])
 
 
+def imagem(args):
+    saida = tamanho = None
+    if "--saida" in args:
+        i = args.index("--saida"); saida = args[i + 1]; del args[i:i + 2]
+    if "--tamanho" in args:
+        i = args.index("--tamanho"); tamanho = args[i + 1]; del args[i:i + 2]
+    pedido = {"prompt": " ".join(args)}
+    if tamanho:
+        pedido["largura"], pedido["altura"] = map(int, tamanho.lower().split("x"))
+    r = chamar("/api/imagem", pedido, timeout=900)
+    if "erro" in r:
+        sys.exit("Erro: " + r["erro"])
+    arquivo = Path(r["arquivo"])
+    if saida:
+        Path(saida).write_bytes(arquivo.read_bytes())
+        arquivo = Path(saida)
+    print(f"Imagem salva em {arquivo.resolve()}")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     cmd, args = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("status", [])
@@ -57,6 +78,8 @@ def main():
         mostrar(chamar("/api/selecionar", {"modo": args[0]}))
     elif cmd == "modelo" and args:
         mostrar(chamar("/api/selecionar", {"modelo_local": args[0]}))
+    elif cmd == "imagem" and args:
+        imagem(args)
     elif cmd == "perguntar":
         perguntar(args)
     else:
